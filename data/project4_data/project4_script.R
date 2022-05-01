@@ -1,21 +1,4 @@
-#setwd("/Volumes/BZ/RG Schier/Group/Blockkurs single cell/blockkurs_sc_projects/")
-#counts <- Read10X_h5("data/project2_data/Lateral_line_5dpf.h5")
-## create a Seurat object containing the RNA adata
-#lateral.line <- CreateSeuratObject(
- # counts = counts,
-  #assay = "RNA"
-#)
-## QC and selecting cells for further analysis
-#epi50[["percent.mt"]] <- PercentageFeatureSet(epi50, pattern = "^MT-")
-#VlnPlot(epi50, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
 
-#source("https://raw.githubusercontent.com/farrellja/URD/master/URD-Install.R")
-#library(URD)
-#zfURD <- readRDS("../../../../Home/liu0005/scATAC_embryo/URD/URD_Zebrafish_Object.rds")
-#plotTree(zfURD, toupper("krt8"))
-
-
-#####* evl and ysl analysis *#####
 library(Seurat)
 library(dplyr)
 library(patchwork)
@@ -44,12 +27,13 @@ epi50 <- NormalizeData(epi50, normalization.method = "LogNormalize", scale.facto
 epi50 <- FindVariableFeatures(epi50, selection.method = "vst", nfeatures = 2000)
 ## Identify the 10 most highly variable genes
 top10 <- head(VariableFeatures(epi50), 10)
-## plot variable features with and without labels
+## Plot variable features with and without labels
 plot1 <- VariableFeaturePlot(epi50)
 plot2 <- LabelPoints(plot = plot1, points = top10, repel = TRUE)
 plot1 + plot2
 ## Scaling the data
-epi50 <- ScaleData(epi50, vars.to.regress = "percent.mt")
+all.genes <- rownames(epi50)
+epi50 <- ScaleData(epi50, features = all.genes)
 ## Perform linear dimensional reduction
 epi50 <- RunPCA(epi50, features = VariableFeatures(object = epi50))
 ## Determine the ‘dimensionality’ of the dataset
@@ -61,21 +45,14 @@ epi50 <- FindClusters(epi50, resolution = 0.1)
 epi50 <- RunUMAP(epi50, dims = 1:10)
 DimPlot(epi50, reduction = "umap")
 
-FeaturePlot(epi50, features = c("tbxta")) ## ventral mesoderm
-FeaturePlot(epi50, features = c("chrd")) ## dorsal mesoderm
-FeaturePlot(epi50, features = c("slc26a1")) ## ysl
-FeaturePlot(epi50, features = c("tp73")) ## apop
-FeaturePlot(epi50, features = c("krt8")) ## evl
-FeaturePlot(epi50, features = c("bmp1a")) ## ventral ectoderm
-FeaturePlot(epi50, features = c("sox3")) ## neural ectoderm
-FeaturePlot(epi50, features = c("sox2")) ## neural ectoderm
+FeaturePlot(epi50, features = c("tbxta")) ##  Mesoderm
+FeaturePlot(epi50, features = c("slc26a1")) ## YSL
+FeaturePlot(epi50, features = c("tp73")) ## Apoptosis-like
+FeaturePlot(epi50, features = c("krt8")) ## EVL
+FeaturePlot(epi50, features = c("sox3")) ## Ectoderm
 
-##  find markers for every cluster compared to all remaining cells, report only the positive ones
+##  Find markers for every cluster compared to all remaining cells, report only the positive ones
 epi50.markers <- FindAllMarkers(epi50, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
-
-## scale all genes then do heatmap
-all.genes <- rownames(epi50)
-epi50 <- ScaleData(epi50, features = all.genes)
 
 epi50.markers %>%
   group_by(cluster) %>%
@@ -88,7 +65,7 @@ names(new.cluster.ids) <- levels(epi50)
 epi50 <- RenameIdents(epi50, new.cluster.ids)
 DimPlot(epi50, reduction = "umap", label = TRUE, pt.size = 0.5) + NoLegend()
 
-## compare expression differences between EVL and YSL
+## Compare expression differences between EVL and YSL
 de.genes.evl.ysl <- FindMarkers(
   object = epi50,
   ident.1 = "EVL",
@@ -96,22 +73,16 @@ de.genes.evl.ysl <- FindMarkers(
   min.pct = 0.1,
 )
 
-## only keep genes expressed in either EVL or YSL (gene expressed in at least 10% cells in either EVL or YSL)
+## Find the intersection between metabolically related genes and differentially expressed genes
 gene.lipid <-fread("data/project4_data/lipid metabolic process.txt",header=F)  
 de.genes.evl.ysl.lipid <- de.genes.evl.ysl[rownames(de.genes.evl.ysl)%in%gene.lipid$V2,]
-## order gene based on expression in EVL, The higher the expression level in EVL, the higher the ranking
+
+## Order gene based on expression in EVL, The higher the expression level in EVL, the higher the ranking
 de.genes.evl.ysl.lipid <- de.genes.evl.ysl.lipid[order(de.genes.evl.ysl.lipid$avg_log2FC,decreasing=T),]
 
-## use mesodermal cells as reference 
+## Use mesoderm cells as reference 
 epi50.new <- subset(x = epi50, idents = c("Mesoderm", "EVL", "YSL"))
-## check expression 
+
+## Plot expression patterns in different cell types 
 DoHeatmap(epi50.new, features = rownames(de.genes.evl.ysl.lipid)) + NoLegend()
-
-## conclusion 
-# 1. a subset of metabolic genes are specifically expressed in EVL, a subset of metabolic genes are specifically expressed in YSL
-
-# 2.there is no shared metabolic genes between evl and ysl. since the genes without significant difference between evl and ysl
-# are lowly expressed and with similar expression pattern with mesoderm.
-
-
 
